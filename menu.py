@@ -5,6 +5,7 @@ import threading
 import time
 import ctypes
 
+
 def virtual_protect(handle, address, size, protection):
     old_protect = ctypes.c_ulong(0)
     resultado = ctypes.windll.kernel32.VirtualProtectEx(
@@ -18,17 +19,21 @@ def virtual_protect(handle, address, size, protection):
         raise Exception("Fallo al cambiar los permisos de memoria.")
     return old_protect.value
 
+
 # --- VARIABLES GLOBALES PARA CONGELAR ---
 congelar_plata = False
 congelar_energia = False
 congelar_tiempo = False
+congelar_vida = False
 valor_plata_fija = 99999
 valor_energia_fija = 999.0
 valor_tiempo_fijo = 600
+valor_vida_fija = 100.0
 
 direccion_plata_global = 0
 direccion_energia_global = 0
 direccion_tiempo_global = 0
+direccion_vida_global = 0
 
 
 def find_dynamic_address(pm, base_ptr, offsets):
@@ -44,7 +49,7 @@ def find_dynamic_address(pm, base_ptr, offsets):
 
 
 def toggle_item_hack(pm, addr, activar):
-
+    """Activa o desactiva la inyección AOB de los items"""
     original = b"\x89\x56\x4C"
     nops = b"\x90\x90\x90"
 
@@ -57,7 +62,7 @@ def toggle_item_hack(pm, addr, activar):
 
 def freezer_thread(pm):
     """Este hilo corre en segundo plano y congela los valores si están activados"""
-    global congelar_plata, congelar_energia, congelar_tiempo, direccion_plata_global, direccion_energia_global, direccion_tiempo_global
+    global congelar_plata, congelar_energia, congelar_tiempo, congelar_vida, direccion_plata_global, direccion_energia_global, direccion_tiempo_global, direccion_vida_global
 
     while True:
         try:
@@ -70,6 +75,9 @@ def freezer_thread(pm):
             if congelar_tiempo and direccion_tiempo_global != 0:
                 pm.write_int(direccion_tiempo_global, valor_tiempo_fijo)
 
+            if congelar_vida and direccion_vida_global != 0:
+                pm.write_float(direccion_vida_global, valor_vida_fija)
+
         except Exception:
             pass
 
@@ -77,8 +85,8 @@ def freezer_thread(pm):
 
 
 def main():
-    global direccion_plata_global, direccion_energia_global, direccion_tiempo_global
-    global congelar_plata, congelar_energia, congelar_tiempo, valor_plata_fija, valor_energia_fija, valor_tiempo_fijo
+    global direccion_plata_global, direccion_energia_global, direccion_tiempo_global, direccion_vida_global
+    global congelar_plata, congelar_energia, congelar_tiempo, congelar_vida, valor_plata_fija, valor_energia_fija, valor_tiempo_fijo, valor_vida_fija
 
     try:
         pm = pymem.Pymem("Stardew Valley.exe")
@@ -104,15 +112,18 @@ def main():
     base_address = coreclr.lpBaseOfDll + 0x0049D188
     base_address2 = coreclr.lpBaseOfDll + 0x004A9F90
     base_address3 = coreclr.lpBaseOfDll + 0x0049D188
+    base_address4 = coreclr.lpBaseOfDll + 0x0049D188
 
     offsets_plata = [0xC8, 0x68, 0x90, 0x28C, 0x10, 0x4C0, 0x41C]
     offsets_tiempo = [0x110, 0x5A0, 0x48, 0x88, 0x20, 0x308, 0x8F4]
-    offsets_energia = [0x458, 0x40, 0xF0, 0x29C, 0x0, 0x480, 0x46C]
+    offsets_energia = [0x2E8, 0x40, 0xB0, 0xA44, 0x10, 0x478, 0x4D4]
+    offsets_vida = [0x458, 0x40, 0x90, 0x40, 0xBF0, 0x0, 0x6EC]
 
     # Resolver direcciones
     direccion_plata_global = find_dynamic_address(pm, base_address, offsets_plata)
     direccion_tiempo_global = find_dynamic_address(pm, base_address2, offsets_tiempo)
     direccion_energia_global = find_dynamic_address(pm, base_address3, offsets_energia)
+    direccion_vida_global = find_dynamic_address(pm, base_address4, offsets_vida)
 
     hilo = threading.Thread(target=freezer_thread, args=(pm,), daemon=True)
     hilo.start()
@@ -124,12 +135,14 @@ def main():
         print("1. Modificar Tiempo (Una vez)")
         print("2. Modificar Plata (Una vez)")
         print("3. Modificar Energia (Una vez)")
-        print(f"4. Congelar Plata: {'[ACTIVADO]' if congelar_plata else '[DESACTIVADO]'}")
-        print(f"5. Congelar Energia: {'[ACTIVADO]' if congelar_energia else '[DESACTIVADO]'}")
-        print(f"6. Congelar Tiempo: {'[ACTIVADO]' if congelar_tiempo else '[DESACTIVADO]'}")
-        print("7. Items/Agua Infinitos (Activar)")
-        print("8. Items/Agua Normales (Desactivar)")
-        print("9. Salir")
+        print("4. Modificar Vida (Una vez)")
+        print(f"5. Congelar Plata: {'[ACTIVADO]' if congelar_plata else '[DESACTIVADO]'}")
+        print(f"6. Congelar Energia: {'[ACTIVADO]' if congelar_energia else '[DESACTIVADO]'}")
+        print(f"7. Congelar Tiempo: {'[ACTIVADO]' if congelar_tiempo else '[DESACTIVADO]'}")
+        print(f"8. Congelar Vida: {'[ACTIVADO]' if congelar_vida else '[DESACTIVADO]'}")
+        print("9. Items/Agua Infinitos (Activar)")
+        print("10. Items/Agua Normales (Desactivar)")
+        print("11. Salir")
 
         op = input("\nElige una opcion: ")
 
@@ -159,36 +172,54 @@ def main():
                     print("[-] Direccion de energia no valida.")
 
             elif op == "4":
+                if direccion_vida_global:
+                    v = int(input("Cuanta vida quieres: "))
+                    pm.write_int(direccion_vida_global, v)
+                    print("[!] Vida cambiada.")
+                else:
+                    print("[-] Direccion de vida no valida.")
+
+            elif op == "5":
+                global valor_plata_fija
                 congelar_plata = not congelar_plata
                 if congelar_plata:
                     valor_plata_fija = int(input("En que cantidad quieres congelar la plata?: "))
                 print(f"[!] Congelar Plata es ahora: {congelar_plata}")
 
-            elif op == "5":
+            elif op == "6":
+                global valor_energia_fija
                 congelar_energia = not congelar_energia
                 if congelar_energia:
                     valor_energia_fija = float(input("En que cantidad quieres congelar la energia?: "))
                 print(f"[!] Congelar Energia es ahora: {congelar_energia}")
 
-            elif op == "6":
+            elif op == "7":
+                global valor_tiempo_fijo
                 congelar_tiempo = not congelar_tiempo
                 if congelar_tiempo:
                     valor_tiempo_fijo = int(input("En que tiempo quieres congelar el reloj? (ej. 1300 para 1:00 PM): "))
                 print(f"[!] Congelar Tiempo es ahora: {congelar_tiempo}")
 
-            elif op == "7":
+            elif op == "8":
+                global valor_vida_fija
+                congelar_vida = not congelar_vida
+                if congelar_vida:
+                    valor_vida_fija = int(input("En que cantidad quieres congelar la vida?: "))
+                print(f"[!] Congelar Vida es ahora: {congelar_vida}")
+
+            elif op == "9":
                 if items_addr:
                     toggle_item_hack(pm, items_addr, True)
                     print("[!] Items infinitos ACTIVADOS.")
                 else:
                     print("[-] No se puede activar, direccion no encontrada.")
 
-            elif op == "8":
+            elif op == "10":
                 if items_addr:
                     toggle_item_hack(pm, items_addr, False)
                     print("[!] Items infinitos DESACTIVADOS.")
 
-            elif op == "9":
+            elif op == "11":
                 print("Restaurando memoria y saliendo...")
                 if items_addr:
                     toggle_item_hack(pm, items_addr, False)
